@@ -1,0 +1,28 @@
+body {
+  margin: 0;
+  font-family: sans-serif;
+}
+
+.app {
+  display: flex;
+  height: 100vh;
+}
+
+.node-panel {
+  width: 200px;
+  background: #f7f7f7;
+  border-right: 1px solid #ccc;
+  padding: 10px;
+}
+
+.draggable-node {
+  border: 1px solid #ccc;
+  padding: 8px;
+  margin-bottom: 5px;
+  background-color: #f4f4f4;
+  cursor: grab;
+}
+
+.draggable-node:hover {
+  background: #eef;
+}

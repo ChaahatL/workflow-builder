@@ -1,13 +1,12 @@
 # create_tables.py
 
-import asyncio
 from app.db.database import engine
 from app.db.models import Base
 
-async def create_tables():
-    async with engine.begin() as conn:
-        await conn.run_sync(Base.metadata.create_all)
+def create_tables():
+    Base.metadata.drop_all(bind=engine)
+    Base.metadata.create_all(bind=engine)
+    print("✅ Tables dropped and re-created successfully!")
 
 if __name__ == "__main__":
-    asyncio.run(create_tables())
-    print("✅ Tables created successfully on Render DB!")
+    create_tables()

@@ -1,21 +1,24 @@
 # app/db/schemas.py
 from pydantic import BaseModel
-from typing import List, Optional, Dict
+from typing import List, Optional, Dict, Any
 from uuid import UUID
 
-class NodeData(BaseModel):
-    label: str
-    type: str
-    config: Optional[Dict] = {}
+class Edge(BaseModel):
+    id: str
+    source: str
+    target: str
 
 class Node(BaseModel):
     id: str
-    data: NodeData
+    type: str
+    config: Dict[str, Any]
     next: List[str]
 
 class WorkflowCreate(BaseModel):
     name: str
-    data: List[Node]
+    description: str
+    nodes: list[dict]
+    edges: list[dict]
 
 class WorkflowUpdate(BaseModel):
     name: Optional[str] = None

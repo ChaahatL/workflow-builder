@@ -2,9 +2,9 @@ import { useRef, useState, useEffect } from 'react';
 import { NodeTypes } from './nodes/CustomNodes';
 import NodeConfigPanel from './NodeConfigPanel';
 import {toast} from 'react-toastify'
-import { savedWorkflow, loadWorkflow } from '../api/workFlowAPI';
+import { savedWorkflow, loadWorkflow, executeWorkflow} from '../api/workflowAPI';
 import useWorkflowState from "../hooks/useWorkflowState"
-import { transformWorkflow, convertToReactFlow, downloadJSON, simulateWorkflow } from '../utils/workflowTransform';
+import { transformWorkflow, convertToReactFlow, downloadJSON } from '../utils/workflowTransform';
 import FlowCanvasButtons from "../components/FlowCanvasButtons";
 
 import ReactFlow, {
@@ -15,6 +15,10 @@ import ReactFlow, {
 } from 'react-flow-renderer';
 
 const InnerFlowCanvas = () => {
+  const [loading, setLoading] = useState(false);
+  const [execResult, setExecResult] = useState(null);
+  const [execError, setExecError] = useState(null);
+
   const [nodes, setNodes] = useState([
     {
       id: "node_0",  // instead of hardcoding 'node_0'
@@ -50,12 +54,24 @@ const InnerFlowCanvas = () => {
   };
 
   const handleSave = async () => {
+    const transformedNodes = transformWorkflow(nodes, edges);  // returns nodes only
 
-    // inside a button handler
-    const structured = transformWorkflow(nodes, edges);
-    const response = await savedWorkflow(structured);
-    console.log(response);
-  }
+    const payload = {
+      name: `Workflow - ${new Date().toLocaleString()}`,
+      description: "Created from UI",
+      nodes: transformedNodes,  // ← should be array, not JSON.stringify()
+      edges: edges.map(edge => ({
+        id: edge.id,
+        source: edge.source,
+        target: edge.target,
+      })),
+    };
+
+    console.log("Payload being sent to backend:", payload);
+
+    const response = await savedWorkflow(payload);
+    console.log('Saved workflow response:', response);
+  };
 
   const onUpdateNode = (id, newConfig) => {
     setNodes((nds) =>
@@ -77,15 +93,63 @@ const InnerFlowCanvas = () => {
 
   }
 
-  const handleSimulate = () => simulateWorkflow(nodes, edges);
+  const handleSimulate = async () => {
+    setLoading(true);
+    setExecError(null);
+    setExecResult(null);
+
+    try {
+      const transformedNodes = transformWorkflow(nodes, edges);
+
+      const payload = {
+        name: `Workflow - ${new Date().toLocaleString()}`,
+        description: "Created from UI",
+        nodes: transformedNodes,
+        edges: edges.map(edge => ({
+          id: edge.id,
+          source: edge.source,
+          target: edge.target,
+        })),
+      };
+
+      console.log("Payload being sent to backend:", payload);
+      
+      const saveResponse = await savedWorkflow(payload);
+      console.log("Saved workflow response:", saveResponse);
+
+      // ✅ Only use workflow_id (UUID) field
+      const workflowId = saveResponse.workflow_id;
+      if (!workflowId) throw new Error("❌ Failed to get UUID workflow ID after saving");
+
+      const execResponse = await executeWorkflow(workflowId);
+      setExecResult(execResponse);
+
+    } catch (err) {
+      setExecError(err.message || "Unknown error");
+    } finally {
+      setLoading(false);
+    }
+  };
 
   const handleExport = () => {
-    const structured = transformWorkflow(nodes, edges);
+    const { nodes: rawNodes, edges: rawEdges } = transformWorkflow(nodes, edges);
+    const structured = {
+      name: 'Export Workflow',
+      description: 'Exported from UI',
+      nodes: rawNodes,
+      edges: rawEdges,
+    };
     console.log(structured);
   };
 
   const handleDownload = () => {
-    const structured = transformWorkflow(nodes, edges);
+    const { nodes: rawNodes, edges: rawEdges } = transformWorkflow(nodes, edges);
+    const structured = {
+      name: 'Downloaded Workflow',
+      description: 'Exported from UI',
+      nodes: rawNodes,
+      edges: rawEdges,
+    };
     downloadJSON(structured);
   };
 
@@ -208,8 +272,18 @@ const InnerFlowCanvas = () => {
           onSimulate={handleSimulate}
           onExport={handleExport}
           onDownload={handleDownload}
-          onSave={handleSave} 
+          onSave={handleSave}
+          loading={loading}
         />
+
+        {loading && <div style={{ marginTop: 16 }}>Running workflow...</div>}
+        {execError && <div style={{ marginTop: 16, color: 'red' }}>Error: {execError}</div>}
+        {execResult && (
+          <div style={{ marginTop: 16 }}>
+            <h3>Execution Result:</h3>
+            <pre>{JSON.stringify(execResult, null, 2)}</pre>
+          </div>
+        )}
 
       </div>
 

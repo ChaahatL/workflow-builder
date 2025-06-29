@@ -10,19 +10,17 @@ from app.utils.llm_utils import generate_response
 from app.db.schemas import WorkflowCreate, WorkflowUpdate
 
 def create_workflow(db: Session, workflow_data: WorkflowCreate):
-    name = workflow_data.name
-    data = workflow_data.data
-
-    # Create the workflow — skip ai_summary
-    new_workflow = Workflow(
-        name=name,
-        data=[node.model_dump() for node in workflow_data.data] # Convert to list of dicts
+    # ✅ Correct usage — directly access fields from Pydantic model
+    workflow = Workflow(
+        name=workflow_data.name,
+        description=workflow_data.description,
+        nodes=workflow_data.nodes,
+        edges=workflow_data.edges,
     )
-
-    db.add(new_workflow)
+    db.add(workflow)
     db.commit()
-    db.refresh(new_workflow)
-    return new_workflow
+    db.refresh(workflow)
+    return workflow
 
 def get_workflow_by_id(db: Session, workflow_id: UUID):
     return db.query(Workflow).filter(Workflow.id == workflow_id).first()

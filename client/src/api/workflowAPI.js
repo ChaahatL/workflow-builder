@@ -6,7 +6,7 @@ export const savedWorkflow = async (workflowData) => {
     headers: {
       'Content-Type': 'application/json',
     },
-    body: JSON.stringify(workflowData), // 🔥 This must be a stringified object
+    body: JSON.stringify(workflowData),
   });
 
   const data = await response.json();

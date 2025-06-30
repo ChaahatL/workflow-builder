@@ -1,9 +1,11 @@
 fastapi
 uvicorn
-asyncpg
 sqlalchemy
+asyncpg
 python-dotenv
+openai
 chromadb
 google-generativeai
 psycopg2-binary
-PyMuPDF
+PyMuPDF       # for 'fitz'
+python-multipart  # required for Form and file uploads

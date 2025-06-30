@@ -6,3 +6,4 @@ python-dotenv
 openai
 chromadb
 google-generativeai
+psycopg2-binary

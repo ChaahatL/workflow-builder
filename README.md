@@ -31,19 +31,20 @@ A full-stack intelligent **no-code/low-code workflow builder**. Create, simulate
 ```
 
 ai-workflow-builder/
-├── backend/
+├── server/
 │   ├── app/
 │   │   ├── api/              # FastAPI routers
 │   │   ├── db/               # Database config + models
-│   │   ├── schemas/          # Pydantic schemas
+│   │   ├── routers/          # Pydantic schemas
 │   │   ├── services/         # Business logic
 │   │   ├── utils/            # Helper utils
 │   │   └── main.py           # FastAPI app entry point
-│   └── create\_tables.py      # DB initialization
-├── frontend/
+│   └── create_tables.py      # DB initialization
+├── client/
 │   ├── components/           # React components
 │   ├── api/                  # Axios API wrapper
 │   ├── utils/                # Data transforms
+    ├── hooks/                # Global React state for workflow logic
 │   └── main.jsx              # React entry point
 ├── README.md                 # ← you're here
 └── requirements.txt          # Python deps (backend)

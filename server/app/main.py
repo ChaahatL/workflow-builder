@@ -1,6 +1,5 @@
 # app/main.py
 from fastapi import FastAPI
-from app.services import workflow
 from fastapi.middleware.cors import CORSMiddleware
 from app.routers import document_router
 from app.routers import workflow_execution_router
@@ -8,10 +7,12 @@ from app.routers.workflow_router import router as workflow_router
 
 app = FastAPI()
 
-# Optional CORS if using frontend
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],  # specify frontend origin in prod
+    allow_origins=[
+        "http://localhost:5173",  # ✅ Your local dev frontend
+        "https://workflow-builder.vercel.app",  # ✅ Optional: your deployed frontend
+    ],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],

@@ -1,27 +1,28 @@
-from sqlalchemy import create_engine
-from sqlalchemy.orm import sessionmaker, Session, declarative_base
+# app/database.py
+
+from sqlalchemy.ext.asyncio import create_async_engine, AsyncSession
+from sqlalchemy.orm import sessionmaker, declarative_base
 import os
 from dotenv import load_dotenv
 
 load_dotenv()
-DATABASE_URL = os.getenv("DATABASE_URL")
+DATABASE_URL = os.getenv("DATABASE_URL")  # Example: postgresql+asyncpg://user:pass@host/db
 
 Base = declarative_base()
 
-# Use sync engine
-engine = create_engine(DATABASE_URL, echo=True)
+# Create async engine
+engine = create_async_engine(DATABASE_URL, echo=True)
 
-# Use sync session
-SessionLocal = sessionmaker(
-    autocommit=False,
+# Create async sessionmaker
+AsyncSessionLocal = sessionmaker(
+    bind=engine,
+    class_=AsyncSession,
+    expire_on_commit=False,
     autoflush=False,
-    bind=engine
+    autocommit=False
 )
 
-# Dependency for FastAPI routes
-def get_db():
-    db = SessionLocal()
-    try:
-        yield db
-    finally:
-        db.close()
+# Dependency
+async def get_db():
+    async with AsyncSessionLocal() as session:
+        yield session

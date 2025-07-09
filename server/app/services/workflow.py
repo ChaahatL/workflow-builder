@@ -1,15 +1,16 @@
 from sqlalchemy.orm import Session
 from app.db.models import Workflow
-from app.utils.llm_utils import generate_response
-from app.db.database import get_db
 from uuid import UUID
 from sqlalchemy.future import select
 from app.db.models import Workflow, Document
 from sqlalchemy.ext.asyncio import AsyncSession
-from app.utils.llm_utils import generate_response
 from app.db.schemas import WorkflowCreate, WorkflowUpdate
+from typing import List, Dict, Any
+from fastapi import UploadFile
+from app.utils.llm_utils import generate_response
+from app.utils.pdf_utils import extract_text_from_pdf
 
-def create_workflow(db: Session, workflow_data: WorkflowCreate):
+async def create_workflow(db: Session, workflow_data: WorkflowCreate):
     # ✅ Correct usage — directly access fields from Pydantic model
     workflow = Workflow(
         name=workflow_data.name,
@@ -18,15 +19,18 @@ def create_workflow(db: Session, workflow_data: WorkflowCreate):
         edges=workflow_data.edges,
     )
     db.add(workflow)
-    db.commit()
-    db.refresh(workflow)
+    await db.commit()
+    await db.refresh(workflow)
+    print("🛠️ Incoming workflow data:", workflow_data.dict())
     return workflow
 
-def get_workflow_by_id(db: Session, workflow_id: UUID):
-    return db.query(Workflow).filter(Workflow.id == workflow_id).first()
+async def get_workflow_by_id(db: AsyncSession, workflow_id: UUID):
+    result = await db.execute(select(Workflow).where(Workflow.id == workflow_id))
+    return result.scalar_one_or_none()
 
-def get_all_workflows(db: Session):
-    return db.query(Workflow).all()
+async def get_all_workflows(db: AsyncSession):
+    result = await db.execute(select(Workflow))
+    return result.scalars().all()
 
 def update_workflow(db: Session, workflow_id: UUID, workflow_data: WorkflowUpdate):
     workflow = get_workflow_by_id(db, workflow_id)
@@ -46,31 +50,39 @@ def delete_workflow(db: Session, workflow_id: UUID):
         return True
     return False
 
-async def run_workflow(workflow_id: str, query: str, db: AsyncSession):
-    # Fetch workflow from DB
+async def run_workflow(workflow_id: str, query: str, db):
+    # Step 1: Get the workflow from DB
     result = await db.execute(select(Workflow).where(Workflow.id == workflow_id))
-    workflow = result.scalars().first()
-
+    workflow = result.scalar_one_or_none()
     if not workflow:
         return {"error": "Workflow not found."}
 
-    # Fetch all documents (simplified — associate later)
+    try:
+        nodes = workflow.nodes
+        edges = workflow.edges
+    except Exception as e:
+        return {"error": f"Invalid workflow data: {str(e)}"}
+
+    # Step 2: Fetch documents from DB
     docs_result = await db.execute(select(Document))
     documents = docs_result.scalars().all()
 
-    if not documents:
-        return {"error": "No documents found."}
+    files = {}
+    for doc in documents:
+        # Optional: Map documents to a node ID if available (doc.node_id)
+        node_id = getattr(doc, "node_id", "document_fallback")
+        files[node_id] = doc.content.encode("utf-8")  # assuming .content is text
 
-    # Combine all document text
-    combined_text = "\n".join([doc.content for doc in documents])
-    prompt = f"You are an AI assistant. Based on the document(s) below, answer this query:\n\nQuery: {query}\n\nDocuments:\n{combined_text}"
+    # Step 3: Inject user query into TextInput node
+    for node in nodes:
+        if node.get("type") == "UserQuery":
+            node["data"] = node.get("data", {})
+            node["data"]["prompt"] = query  # Inject chat input
 
-    response = generate_response(prompt);
+    # Step 4: Run actual execution logic
+    result = await execute_workflow(nodes, edges, files)
 
-    return {
-        "workflow_name": workflow.name,
-        "response": response
-    }
+    return result  # Should be { "result": "...LLM output..." }
 
 async def save_workflow_and_documents(db: AsyncSession, workflow_data: dict, documents: list):
     # Save workflow
@@ -91,3 +103,75 @@ async def save_workflow_and_documents(db: AsyncSession, workflow_data: dict, doc
         db.add(document)
 
     await db.commit()
+
+async def execute_workflow(nodes: List[Dict[str, Any]], edges: List[Dict[str, str]], files: Dict[str, UploadFile]):
+    node_outputs = {}
+    node_lookup = {node['id']: node for node in nodes}
+
+    for node in nodes:
+        node_id = node['id']
+        node_type = node['type']
+        config = node.get('data', {})
+
+        if node_type == 'UserQuery':
+            node_outputs[node_id] = config.get('prompt', '')
+
+        elif node_type == 'DocumentInput':
+            file = files.get(node_id)
+            if file:
+                text = await extract_text_from_pdf(file)
+                node_outputs[node_id] = text
+            else:
+                node_outputs[node_id] = ''
+
+        elif node_type == 'UserQuery':
+            prompt = config.get('prompt', '')
+            print(f"🧠 UserQuery prompt: {prompt}")
+            node_outputs[node_id] = prompt
+
+        elif node_type == 'KnowledgeBase':
+            input_text = ''
+            for edge in edges:
+                if edge['target'] == node_id:
+                    input_text = node_outputs.get(edge['source'], '')
+                    break
+            print(f"📚 KnowledgeBase received input: {input_text}")
+            node_outputs[node_id] = input_text  # replace with search logic later
+
+        elif 'LLM' in node_type:
+            input_text = ''
+            for edge in edges:
+                if edge['target'] == node_id:
+                    input_text = node_outputs.get(edge['source'], '')
+                    break
+            prompt_template = config.get('promptTemplate') or '{input}'
+            prompt = prompt_template.replace('{input}', input_text)
+            print("📨 Prompt sent to Gemini:", prompt)
+            print("🧩 input_text from previous node:", input_text)
+            print("🧩 prompt_template:", prompt_template)
+            print("📨 Final prompt:", prompt)
+
+            if not prompt.strip():
+                print("⚠️ Skipping LLM due to empty prompt.")
+                node_outputs[node_id] = "⚠️ No input provided to LLM node."
+                continue
+
+            response = generate_response(prompt)
+            print("📬 Gemini response:", response)
+            node_outputs[node_id] = response
+
+        elif node_type == 'Output':
+            output_text = ''
+            for edge in edges:
+                if edge['target'] == node_id:
+                    output_text = node_outputs.get(edge['source'], '')
+                    break
+            node_outputs[node_id] = output_text
+
+    final_output = ''
+    for node in nodes:
+        if node['type'] == 'Output':
+            final_output = node_outputs.get(node['id'], '')
+            break
+
+    return {"result": final_output}

@@ -17,8 +17,9 @@ class Node(BaseModel):
 class WorkflowCreate(BaseModel):
     name: str
     description: str
-    nodes: list[dict]
-    edges: list[dict]
+    nodes: List[dict]
+    edges: List[dict]
+
 
 class WorkflowUpdate(BaseModel):
     name: Optional[str] = None
@@ -27,7 +28,9 @@ class WorkflowUpdate(BaseModel):
 class WorkflowResponse(BaseModel):
     id: UUID
     name: str
-    data: List[Node]
+    description: str
+    nodes: List[dict]
+    edges: List[dict]
 
     class Config:
         orm_mode = True

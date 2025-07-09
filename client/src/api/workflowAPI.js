@@ -1,20 +1,26 @@
-const API_BASE = 'https://workflow-builder-backend.onrender.com/api';
+const API_BASE = 'http://127.0.0.1:8000/api';
 
 export const savedWorkflow = async (workflowData) => {
-  const response = await fetch(`${API_BASE}/create_workflow`, {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-    },
-    body: JSON.stringify(workflowData),
-  });
+  try {
+    const response = await fetch(`${API_BASE}/create_workflow`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify(workflowData),
+    });
 
-  const data = await response.json();
-  if (!response.ok) {
-    console.error("Backend error:", data);
+    const data = await response.json();
+    if (!response.ok) {
+      console.error("Backend error:", data);
+      throw new Error(data?.detail || 'Unknown backend error');
+    }
+
+    return data;
+  } catch (err) {
+    console.error("❌ Failed to get workflow ID", err);
+    throw err;
   }
-
-  return data;
 };
 
 export const loadWorkflow = async () => {
@@ -22,14 +28,18 @@ export const loadWorkflow = async () => {
     return response.json();
 };
 
-export const executeWorkflow = async (workflowId) => {
-  const response = await fetch(`${API_BASE}/execute_workflows/${workflowId}`, {
+export const executeWorkflow = async (workflowId, userQuery) => {
+  const response = await fetch(`${API_BASE}/execute_workflow/${workflowId}`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    // No body needed unless your backend expects something else
+    body: JSON.stringify({ query: userQuery })  // ✅ Send required query
   });
+
   if (!response.ok) {
-    throw new Error('Failed to execute workflow');
+    const errorData = await response.json();
+    console.error("❌ Backend Error:", errorData.detail);
+    throw new Error(`Failed to execute workflow: ${errorData.detail}`);
   }
+
   return response.json();
 };

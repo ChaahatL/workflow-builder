@@ -36,6 +36,9 @@ const InnerFlowCanvas = () => {
   const reactFlowWrapper = useRef(null);
   const reactFlowInstance = useRef(null); // store the instance safely
 
+  const [query, setQuery] = useState('');
+  const [chatMessages, setChatMessages] = useState([]);
+
   const {
     onInit,
     onConnect,
@@ -94,6 +97,12 @@ const InnerFlowCanvas = () => {
   }
 
   const handleSimulate = async () => {
+
+    if (!query.trim()) {
+      toast.error("Please enter a query first");
+      return;
+    }
+
     setLoading(true);
     setExecError(null);
     setExecResult(null);
@@ -112,18 +121,20 @@ const InnerFlowCanvas = () => {
         })),
       };
 
-      console.log("Payload being sent to backend:", payload);
-      
       const saveResponse = await savedWorkflow(payload);
-      console.log("Saved workflow response:", saveResponse);
+      const workflowId = saveResponse.id;
+      if (!workflowId) throw new Error("❌ Failed to get workflow ID");
 
-      // ✅ Only use workflow_id (UUID) field
-      const workflowId = saveResponse.workflow_id;
-      if (!workflowId) throw new Error("❌ Failed to get UUID workflow ID after saving");
+      const execResponse = await executeWorkflow(workflowId, query); // 🔥 Send query here
 
-      const execResponse = await executeWorkflow(workflowId);
       setExecResult(execResponse);
 
+      // Update chat messages
+      setChatMessages((prev) => [
+        ...prev,
+        { sender: "user", message: query },
+        { sender: "bot", message: execResponse.result || "No response" },
+      ]);
     } catch (err) {
       setExecError(err.message || "Unknown error");
     } finally {
@@ -268,6 +279,36 @@ const InnerFlowCanvas = () => {
           </div>
         )}
 
+        <div style={{ marginTop: '12px', display: 'flex', gap: '12px', alignItems: 'center' }}>
+          <input
+            type="text"
+            placeholder="Ask a question..."
+            value={query}
+            onChange={(e) => setQuery(e.target.value)}
+            style={{
+              flex: 1,
+              padding: '8px',
+              border: '1px solid #ccc',
+              borderRadius: '4px',
+              fontSize: '14px',
+            }}
+          />
+          <button
+            onClick={handleSimulate}
+            disabled={loading}
+            style={{
+              padding: '8px 16px',
+              backgroundColor: '#4caf50',
+              color: 'white',
+              border: 'none',
+              borderRadius: '4px',
+              cursor: 'pointer',
+            }}
+          >
+            Run
+          </button>
+        </div>
+
         <FlowCanvasButtons
           onSimulate={handleSimulate}
           onExport={handleExport}
@@ -282,6 +323,28 @@ const InnerFlowCanvas = () => {
           <div style={{ marginTop: 16 }}>
             <h3>Execution Result:</h3>
             <pre>{JSON.stringify(execResult, null, 2)}</pre>
+          </div>
+        )}
+
+        {chatMessages.length > 0 && (
+          <div style={{ marginTop: '16px', padding: '12px', background: '#f4f4f4', borderRadius: '8px' }}>
+            <h4>Chat History</h4>
+            {chatMessages.map((msg, idx) => (
+              <div key={idx} style={{ textAlign: msg.sender === 'bot' ? 'left' : 'right' }}>
+                <div
+                  style={{
+                    display: 'inline-block',
+                    padding: '8px 12px',
+                    margin: '4px 0',
+                    borderRadius: '6px',
+                    backgroundColor: msg.sender === 'bot' ? '#eee' : '#d1ffd6',
+                    maxWidth: '70%',
+                  }}
+                >
+                  {msg.message}
+                </div>
+              </div>
+            ))}
           </div>
         )}
 

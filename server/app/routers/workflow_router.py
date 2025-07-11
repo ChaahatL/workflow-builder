@@ -1,7 +1,6 @@
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Body
 from sqlalchemy.ext.asyncio import AsyncSession
 from uuid import UUID
-
 from app.db.schemas import WorkflowCreate, WorkflowUpdate
 from app.services import workflow as workflow_service
 from app.db.database import get_db
@@ -9,8 +8,14 @@ from app.db.database import get_db
 router = APIRouter()
 
 @router.post("/create_workflow")
-async def create_workflow(workflow_data: WorkflowCreate, db: AsyncSession = Depends(get_db)):
-    return await workflow_service.create_workflow(db, workflow_data)
+async def create_workflow(
+    workflow_data: dict = Body(...),  # Accept raw dict
+    db: AsyncSession = Depends(get_db)
+):
+    workflow = workflow_data.get("workflow", {})
+    documents = workflow_data.get("documents", [])
+
+    return await workflow_service.save_workflow_and_documents(db, workflow, documents)
 
 @router.get("/workflows")
 async def get_all_workflows(db: AsyncSession = Depends(get_db)):

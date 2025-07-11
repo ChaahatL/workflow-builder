@@ -110,6 +110,14 @@ const InnerFlowCanvas = () => {
     try {
       const transformedNodes = transformWorkflow(nodes, edges);
 
+      // 🔍 Step: Extract uploaded documents from DocumentInput nodes
+      const documents = transformedNodes
+        .filter(node => node.type === 'DocumentInput' && node.data.config?.content)
+        .map(node => ({
+          name: node.data.config.fileName,
+          content: node.data.config.content, // decode base64 back to text for backend
+        }));
+
       const payload = {
         name: `Workflow - ${new Date().toLocaleString()}`,
         description: "Created from UI",
@@ -121,7 +129,7 @@ const InnerFlowCanvas = () => {
         })),
       };
 
-      const saveResponse = await savedWorkflow(payload);
+      const saveResponse = await savedWorkflow(payload, documents);
       const workflowId = saveResponse.id;
       if (!workflowId) throw new Error("❌ Failed to get workflow ID");
 

@@ -1,13 +1,16 @@
 const API_BASE = 'http://127.0.0.1:8000/api';
 
-export const savedWorkflow = async (workflowData) => {
+export const savedWorkflow = async (workflowData, documents = []) => {
   try {
     const response = await fetch(`${API_BASE}/create_workflow`, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
       },
-      body: JSON.stringify(workflowData),
+      body: JSON.stringify({
+        workflow: workflowData,
+        documents: documents,  // 🆕 Include documents in the request
+      }),
     });
 
     const data = await response.json();

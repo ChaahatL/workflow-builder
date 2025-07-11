@@ -1,4 +1,4 @@
-const componentList = ['UserQuery', 'KnowledgeBase', 'LLMEngine', 'Output'];
+const componentList = ['UserQuery', 'KnowledgeBase', 'DocumentInput', 'LLMEngine', 'Output'];
 
 const onDragStart = (event, nodeType) => {
   event.dataTransfer.setData('application/reactflow', nodeType);

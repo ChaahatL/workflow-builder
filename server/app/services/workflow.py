@@ -8,7 +8,10 @@ from app.db.schemas import WorkflowCreate, WorkflowUpdate
 from typing import List, Dict, Any
 from fastapi import UploadFile
 from app.utils.llm_utils import generate_response
-from app.utils.pdf_utils import extract_text_from_pdf
+from app.utils.pdf_utils import extract_text_and_embedding
+from app.utils.embedding_utils import generate_embedding  # You’ll create this
+import numpy as np
+from app.services.vectorstore import add_to_vector_store, query_vector_store
 
 async def create_workflow(db: Session, workflow_data: WorkflowCreate):
     # ✅ Correct usage — directly access fields from Pydantic model
@@ -72,12 +75,35 @@ async def run_workflow(workflow_id: str, query: str, db):
         # Optional: Map documents to a node ID if available (doc.node_id)
         node_id = getattr(doc, "node_id", "document_fallback")
         files[node_id] = doc.content.encode("utf-8")  # assuming .content is text
+    
+    # Step 2.5: Generate query embedding
+    query_embedding = await generate_embedding(query)
+
+    # Step 2.6: Semantic Search - compute cosine similarity
+    def cosine_similarity(a, b):
+        a = np.array(a)
+        b = np.array(b)
+        return float(np.dot(a, b) / (np.linalg.norm(a) * np.linalg.norm(b)))
+
+    top_docs = []
+    for doc in documents:
+        if doc.embedding:
+            similarity = cosine_similarity(query_embedding, doc.embedding)
+            top_docs.append((similarity, doc.content))
+
+    # Step 2.7: Get top 1–3 most relevant documents
+    top_docs.sort(reverse=True)
+    context = "\n".join([doc for _, doc in top_docs[:3]])
 
     # Step 3: Inject user query into TextInput node
     for node in nodes:
         if node.get("type") == "UserQuery":
             node["data"] = node.get("data", {})
             node["data"]["prompt"] = query  # Inject chat input
+
+        elif node.get("type") == "KnowledgeBase":
+            node["data"] = node.get("data", {})
+            node["data"]["value"] = context  # Inject relevant doc content
 
     # Step 4: Run actual execution logic
     result = await execute_workflow(nodes, edges, files)
@@ -95,14 +121,18 @@ async def save_workflow_and_documents(db: AsyncSession, workflow_data: dict, doc
 
     # Save each document
     for doc in documents:
-        document = Document(
-            id=str(UUID()),
-            name=doc["name"],
-            content=doc["content"]
-        )
-        db.add(document)
+        text, embedding = await extract_text_and_embedding(doc["content"])
+    
+    text = extract_text_and_embedding(doc["content"])  # already in place
+    add_to_vector_store(doc["name"], text)        # vector store indexing
 
-    await db.commit()
+    document = Document(
+        id=str(UUID()),
+        name=doc["name"],
+        content=text,
+        embedding=embedding,  # ✅ Save vector
+    )
+    db.add(document)
 
 async def execute_workflow(nodes: List[Dict[str, Any]], edges: List[Dict[str, str]], files: Dict[str, UploadFile]):
     node_outputs = {}
@@ -119,7 +149,7 @@ async def execute_workflow(nodes: List[Dict[str, Any]], edges: List[Dict[str, st
         elif node_type == 'DocumentInput':
             file = files.get(node_id)
             if file:
-                text = await extract_text_from_pdf(file)
+                text = await extract_text_and_embedding(file)
                 node_outputs[node_id] = text
             else:
                 node_outputs[node_id] = ''
@@ -136,6 +166,8 @@ async def execute_workflow(nodes: List[Dict[str, Any]], edges: List[Dict[str, st
                     input_text = node_outputs.get(edge['source'], '')
                     break
             print(f"📚 KnowledgeBase received input: {input_text}")
+            context = query_vector_store(input_text)
+            node_outputs[node_id] = "\n".join(context)
             node_outputs[node_id] = input_text  # replace with search logic later
 
         elif 'LLM' in node_type:
@@ -156,7 +188,9 @@ async def execute_workflow(nodes: List[Dict[str, Any]], edges: List[Dict[str, st
                 node_outputs[node_id] = "⚠️ No input provided to LLM node."
                 continue
 
-            response = generate_response(prompt)
+            temperature = float(config.get("temperature", 0.7))
+            response = await generate_response(prompt, temperature)
+
             print("📬 Gemini response:", response)
             node_outputs[node_id] = response
 

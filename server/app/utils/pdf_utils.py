@@ -1,9 +1,13 @@
 import fitz  # PyMuPDF
+from app.utils.embedding_utils import generate_embedding  # ensure async-safe
+import asyncio
 
-def extract_text_from_pdf(pdf_bytes: bytes) -> str:
+async def extract_text_and_embedding(pdf_bytes: bytes) -> tuple[str, list[float]]:
     doc = fitz.open(stream=pdf_bytes, filetype="pdf")
     text = ""
     for page in doc:
         text += page.get_text()
     doc.close()
-    return text
+
+    embedding = await generate_embedding(text)
+    return text, embedding

@@ -18,3 +18,4 @@ class Document(Base):
     id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     name = Column(String, nullable=False)
     content = Column(Text, nullable=False)
+    embedding = Column(JSON, nullable=True)  # <-- optional for now

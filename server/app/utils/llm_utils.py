@@ -1,23 +1,18 @@
-import google.generativeai as genai
+import openai
 import os
 from dotenv import load_dotenv
 
 load_dotenv()
-genai.configure(api_key=os.getenv("GEMINI_API_KEY"))
+openai.api_key = os.getenv("OPENAI_API_KEY")
 
-model = genai.GenerativeModel("gemini-1.5-pro-latest")
-
-def generate_response(prompt: str):
+async def generate_response(prompt: str, temperature: float = 0.7) -> str:
     try:
-        response = model.generate_content(prompt)
-        print("🔍 Raw Gemini response:", response)
-        # Safe access
-        if hasattr(response, "text"):
-            return response.text.strip()
-        elif hasattr(response, "candidates") and response.candidates:
-            return response.candidates[0].text.strip()
-        else:
-            return "No response from Gemini"
+        response = await openai.ChatCompletion.acreate(  # async version
+            model="gpt-3.5-turbo",  # or "gpt-4" if available
+            messages=[{"role": "user", "content": prompt}],
+            temperature=temperature,
+        )
+        return response.choices[0].message["content"].strip()
     except Exception as e:
-        print(f"Error generating response: {e}")
+        print(f"❌ OpenAI Error:", str(e))
         return "LLM Error"

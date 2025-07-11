@@ -13,6 +13,15 @@ export const NodeTypes = {
     </div>
   ),
 
+  DocumentInput: ({ data }) => (
+    <div style={{ padding: 10, border: '1px solid #6a1b9a', borderRadius: 6, background: '#ede7f6' }}>
+      <strong>Document Input</strong>
+      <div style={{ fontSize: '12px', marginTop: 5 }}>
+        {data.config?.fileName || 'No file uploaded'}
+      </div>
+    </div>
+  ),
+
   LLMEngine: ({ data }) => (
     <div style={{ padding: 10, border: '1px solid #ff9800', borderRadius: 6, background: '#fff3e0' }}>
       <strong>LLM Engine</strong>

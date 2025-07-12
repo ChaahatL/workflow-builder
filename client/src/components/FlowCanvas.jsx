@@ -16,7 +16,6 @@ import ReactFlow, {
 
 const InnerFlowCanvas = () => {
   const [loading, setLoading] = useState(false);
-  const [execResult, setExecResult] = useState(null);
   const [execError, setExecError] = useState(null);
 
   const [nodes, setNodes] = useState([
@@ -105,18 +104,17 @@ const InnerFlowCanvas = () => {
 
     setLoading(true);
     setExecError(null);
-    setExecResult(null);
 
     try {
       const transformedNodes = transformWorkflow(nodes, edges);
 
       // 🔍 Step: Extract uploaded documents from DocumentInput nodes
       const documents = transformedNodes
-        .filter(node => node.type === 'DocumentInput' && node.data.config?.content)
-        .map(node => ({
-          name: node.data.config.fileName,
-          content: node.data.config.content, // decode base64 back to text for backend
-        }));
+      .filter(node => node.type === 'DocumentInput' && node.config?.content)
+      .map(node => ({
+        name: node.config.fileName,
+        content: node.config.content,
+      }));
 
       const payload = {
         name: `Workflow - ${new Date().toLocaleString()}`,
@@ -133,15 +131,13 @@ const InnerFlowCanvas = () => {
       const workflowId = saveResponse.id;
       if (!workflowId) throw new Error("❌ Failed to get workflow ID");
 
-      const execResponse = await executeWorkflow(workflowId, query); // 🔥 Send query here
-
-      setExecResult(execResponse);
+      const execResponse = await executeWorkflow(workflowId, query); // Send query here
 
       // Update chat messages
       setChatMessages((prev) => [
         ...prev,
         { sender: "user", message: query },
-        { sender: "bot", message: execResponse.result || "No response" },
+        { sender: "bot", message: execResponse.output?.result || "No response" },
       ]);
     } catch (err) {
       setExecError(err.message || "Unknown error");
@@ -327,12 +323,6 @@ const InnerFlowCanvas = () => {
 
         {loading && <div style={{ marginTop: 16 }}>Running workflow...</div>}
         {execError && <div style={{ marginTop: 16, color: 'red' }}>Error: {execError}</div>}
-        {execResult && (
-          <div style={{ marginTop: 16 }}>
-            <h3>Execution Result:</h3>
-            <pre>{JSON.stringify(execResult, null, 2)}</pre>
-          </div>
-        )}
 
         {chatMessages.length > 0 && (
           <div style={{ marginTop: '16px', padding: '12px', background: '#f4f4f4', borderRadius: '8px' }}>

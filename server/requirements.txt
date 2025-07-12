@@ -7,5 +7,7 @@ openai
 chromadb
 google-generativeai
 psycopg2-binary
-PyMuPDF       # for 'fitz'
-python-multipart  # required for Form and file uploads
+PyMuPDF            # for 'fitz'
+python-multipart   # required for Form and file uploads
+cohere             # ✅ for Cohere embeddings
+together           # ✅ for Together AI LLMs

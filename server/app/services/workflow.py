@@ -1,6 +1,6 @@
 from sqlalchemy.orm import Session
 from app.db.models import Workflow
-from uuid import UUID
+from uuid import uuid4, UUID
 from sqlalchemy.future import select
 from app.db.models import Workflow, Document
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -113,26 +113,30 @@ async def run_workflow(workflow_id: str, query: str, db):
 async def save_workflow_and_documents(db: AsyncSession, workflow_data: dict, documents: list):
     # Save workflow
     workflow = Workflow(
-        id=str(UUID()),
+        id=uuid4(),
         name=workflow_data.get("name", "Untitled Workflow"),
-        data=workflow_data
+        description=workflow_data.get("description", ""),
+        nodes=workflow_data.get("nodes", []),
+        edges=workflow_data.get("edges", [])
     )
     db.add(workflow)
 
     # Save each document
     for doc in documents:
         text, embedding = await extract_text_and_embedding(doc["content"])
-    
-    text = extract_text_and_embedding(doc["content"])  # already in place
-    add_to_vector_store(doc["name"], text)        # vector store indexing
+        add_to_vector_store(doc["name"], text)  # ✅ inside loop
 
-    document = Document(
-        id=str(UUID()),
-        name=doc["name"],
-        content=text,
-        embedding=embedding,  # ✅ Save vector
-    )
-    db.add(document)
+        document = Document(
+            id=uuid4(),
+            name=doc["name"],
+            content=text,
+            embedding=embedding,
+        )
+        db.add(document)
+
+    await db.commit()
+    # return {"message": "Workflow and documents saved successfully", "workflow_id": str(workflow.id)}
+    return {"id": str(workflow.id)}
 
 async def execute_workflow(nodes: List[Dict[str, Any]], edges: List[Dict[str, str]], files: Dict[str, UploadFile]):
     node_outputs = {}
@@ -143,13 +147,10 @@ async def execute_workflow(nodes: List[Dict[str, Any]], edges: List[Dict[str, st
         node_type = node['type']
         config = node.get('data', {})
 
-        if node_type == 'UserQuery':
-            node_outputs[node_id] = config.get('prompt', '')
-
-        elif node_type == 'DocumentInput':
+        if node_type == 'DocumentInput':
             file = files.get(node_id)
             if file:
-                text = await extract_text_and_embedding(file)
+                text, _ = await extract_text_and_embedding(file)
                 node_outputs[node_id] = text
             else:
                 node_outputs[node_id] = ''
@@ -160,28 +161,48 @@ async def execute_workflow(nodes: List[Dict[str, Any]], edges: List[Dict[str, st
             node_outputs[node_id] = prompt
 
         elif node_type == 'KnowledgeBase':
+            # 1️⃣ pull the user query from the upstream node
             input_text = ''
             for edge in edges:
                 if edge['target'] == node_id:
                     input_text = node_outputs.get(edge['source'], '')
                     break
+
             print(f"📚 KnowledgeBase received input: {input_text}")
-            context = query_vector_store(input_text)
-            node_outputs[node_id] = "\n".join(context)
-            node_outputs[node_id] = input_text  # replace with search logic later
+
+            # 2️⃣ vector search → list[str]
+            context_chunks = query_vector_store(input_text)        # returns ["The capital of Germany is Berlin", ...]
+            kb_output = "\n".join(context_chunks)                  # join chunks
+
+            node_outputs[node_id] = kb_output                      # ✅ keep this!
+            # 🔸 DO NOT overwrite it with input_text
 
         elif 'LLM' in node_type:
             input_text = ''
             for edge in edges:
                 if edge['target'] == node_id:
                     input_text = node_outputs.get(edge['source'], '')
+                    print(f"🔄 LLM input from node {edge['source']} → {repr(input_text)}")
                     break
-            prompt_template = config.get('promptTemplate') or '{input}'
-            prompt = prompt_template.replace('{input}', input_text)
-            print("📨 Prompt sent to Gemini:", prompt)
-            print("🧩 input_text from previous node:", input_text)
-            print("🧩 prompt_template:", prompt_template)
-            print("📨 Final prompt:", prompt)
+
+            # 💡 Pull the original user query
+            user_query = ''
+            for node in nodes:
+                if node['type'] == 'UserQuery':
+                    user_query = node_outputs.get(node['id'], '')
+                    break
+
+            # 🧠 New default prompt template (uses both context and query)
+            prompt_template = config.get('promptTemplate') or \
+                "Use the following context to answer the question below.\n\nContext:\n{input}\n\nQuestion:\n{query}"
+
+            # 🏗️ Replace both placeholders
+            prompt = prompt_template.replace('{input}', input_text).replace('{query}', user_query)
+
+            print("📨 Prompt sent to LLM Model:", prompt)
+            print("🧩 input_text from previous nodes:", input_text)
+            print("🧩 user_query:", user_query)
+            print("🧩 Final prompt:", prompt)
 
             if not prompt.strip():
                 print("⚠️ Skipping LLM due to empty prompt.")
@@ -191,7 +212,7 @@ async def execute_workflow(nodes: List[Dict[str, Any]], edges: List[Dict[str, st
             temperature = float(config.get("temperature", 0.7))
             response = await generate_response(prompt, temperature)
 
-            print("📬 Gemini response:", response)
+            print("📬 LLM response:", response)
             node_outputs[node_id] = response
 
         elif node_type == 'Output':

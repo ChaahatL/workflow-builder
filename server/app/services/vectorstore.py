@@ -1,12 +1,16 @@
 import chromadb
-from chromadb.utils.embedding_functions import OpenAIEmbeddingFunction
+from chromadb.utils.embedding_functions import DefaultEmbeddingFunction  # ✅ Local embeddings
 import os
 
-openai_api_key = os.getenv("OPENAI_API_KEY")
-embedding_function = OpenAIEmbeddingFunction(api_key=openai_api_key)
+# No need for any API key if using DefaultEmbeddingFunction
+embedding_function = DefaultEmbeddingFunction()
 
+# Create ChromaDB client and collection with local embedding model
 client = chromadb.Client()
-collection = client.get_or_create_collection(name="kb_docs", embedding_function=embedding_function)
+collection = client.get_or_create_collection(
+    name="kb_docs",
+    embedding_function=embedding_function
+)
 
 def add_to_vector_store(doc_id: str, content: str):
     collection.add(
